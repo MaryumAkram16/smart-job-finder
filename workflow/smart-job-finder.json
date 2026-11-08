@@ -1,0 +1,765 @@
+{
+  "name": "Smart job finder",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "id": "4c60fd8f-3713-4915-a252-94974e58ebda",
+      "name": "Every 6 Hours",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -2992,
+        1904
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "search-terms",
+              "name": "searchTerms",
+              "value": "=[\"AI Automation Engineer\", \"Applied AI Engineer\", \"AI Engineer remote\", \"n8n automation engineer\", \"LLM engineer remote\", \"workflow automation engineer\"]",
+              "type": "array"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "50470394-7fff-425d-be0c-6c707002d608",
+      "name": "Search Terms",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -2784,
+        1904
+      ]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "searchTerms",
+        "options": {}
+      },
+      "id": "4fbe0fd5-45f0-4eae-a712-9df66f300927",
+      "name": "Split Terms",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        -2560,
+        1904
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://jsearch.p.rapidapi.com/search",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpMultipleHeadersAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "query",
+              "value": "={{ $json.searchTerms }} remote"
+            },
+            {
+              "name": "date_posted",
+              "value": "3days"
+            },
+            {
+              "name": "remote_jobs_only",
+              "value": "true"
+            },
+            {
+              "name": "num_pages",
+              "value": "1"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-RapidAPI-Host",
+              "value": "jsearch.p.rapidapi.com"
+            }
+          ]
+        },
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 3000
+            }
+          },
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "62f4a734-703a-4607-b433-3ab33eadb872",
+      "name": "JSearch API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2336,
+        1776
+      ],
+      "credentials": {
+        "httpMultipleHeadersAuth": {
+          "id": "YOUR_JSEARCH_CREDENTIAL_ID",
+          "name": "Multiple Headers Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "https://serpapi.com/search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "engine",
+              "value": "google_jobs"
+            },
+            {
+              "name": "q",
+              "value": "={{ $json.searchTerms }} remote"
+            },
+            {
+              "name": "chips",
+              "value": "date_posted:week"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "528df886-112f-48c9-a601-74518e02885c",
+      "name": "SerpAPI Google Jobs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2336,
+        2016
+      ],
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "YOUR_SERPAPI_CREDENTIAL_ID",
+          "name": "Query Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize JSearch + SerpAPI results into one clean format\nconst out = [];\n\nfor (const item of $input.all()) {\n  const data = item.json;\n\n  if (data.data && Array.isArray(data.data)) {\n    for (const job of data.data) {\n      out.push({\n        json: {\n          id: job.job_id || (job.employer_name + '-' + job.job_title).replace(/\\s+/g, '-').toLowerCase(),\n          title: job.job_title || '',\n          company: job.employer_name || '',\n          location: job.job_is_remote ? 'Remote' : (job.job_city || job.job_country || 'Unknown'),\n          description: (job.job_description || '').slice(0, 4000),\n          url: job.job_apply_link || job.job_google_link || '',\n          posted: job.job_posted_at_datetime_utc || '',\n          source: 'JSearch'\n        }\n      });\n    }\n  }\n\n  if (data.jobs_results && Array.isArray(data.jobs_results)) {\n    for (const job of data.jobs_results) {\n      const applyLink = (job.apply_options && job.apply_options[0] && job.apply_options[0].link) || job.share_link || '';\n      out.push({\n        json: {\n          id: job.job_id || (job.company_name + '-' + job.title).replace(/\\s+/g, '-').toLowerCase(),\n          title: job.title || '',\n          company: job.company_name || '',\n          location: job.location || 'Unknown',\n          description: (job.description || '').slice(0, 4000),\n          url: applyLink,\n          posted: (job.detected_extensions && job.detected_extensions.posted_at) || '',\n          source: 'SerpAPI'\n        }\n      });\n    }\n  }\n}\n\nreturn out;"
+      },
+      "id": "75bf56ff-4ec9-4060-b947-993236d3fd4c",
+      "name": "Merge & Normalize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1968,
+        1904
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SEEN_JOBS_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Seen Jobs",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_SEEN_JOBS_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_SEEN_JOBS_SHEET_ID/edit#gid=0"
+        },
+        "filtersUI": {
+          "values": []
+        },
+        "options": {}
+      },
+      "id": "59a69e38-8460-42aa-af73-558945dec23d",
+      "name": "Get Seen Job IDs",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -1760,
+        1904
+      ],
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      },
+      "notes": "Reads previously emailed job IDs."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Deduplicate against already-seen job IDs\nconst jobs = $('Merge & Normalize').all();\n\nconst CUTOFF_DAYS = 7;\nconst cutoff = new Date();\ncutoff.setDate(cutoff.getDate() - CUTOFF_DAYS);\n\nconst seenItems = $input.all();\nconst seenIds = new Set();\nfor (const s of seenItems) {\n  if (!s.json || !s.json.job_id) continue;\n  const seenDate = s.json.date_seen ? new Date(s.json.date_seen) : null;\n  if (seenDate && seenDate < cutoff) continue;\n  seenIds.add(s.json.job_id);\n}\n\nconst batchSeen = new Set();\nconst out = [];\n\nfor (const item of jobs) {\n  const job = item.json;\n  if (!job.id || !job.title || !job.url) continue;\n  if (seenIds.has(job.id)) continue;\n  if (batchSeen.has(job.id)) continue;\n  batchSeen.add(job.id);\n  out.push({ json: job });\n}\n\nreturn out;"
+      },
+      "id": "d44324d4-c9f2-4a98-9f14-aa5a9b539b2f",
+      "name": "Remove Seen Jobs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1440,
+        1904
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Cheap rule-based pre-filter (no API cost)\nconst STACK_TERMS = ['n8n', 'python', 'openai', 'gpt', 'claude', 'anthropic', 'gemini', 'api', 'automation', 'llm', 'rag', 'webhook', 'zapier', 'make.com'];\nconst HARD_REJECT = ['us citizens only', 'must relocate', 'relocation required', 'on-site only', 'onsite only', 'security clearance', 'us citizenship required', 'must be located in the us', 'hybrid role'];\nconst CORE_REJECT = ['tensorflow', 'pytorch', 'cuda', 'computer vision', 'deep learning research'];\nconst SENIOR_FLAGS = ['8+ years', '10+ years', '7+ years', '9+ years', 'phd required', 'phd preferred'];\n\nconst out = [];\n\nfor (const item of $input.all()) {\n  const job = item.json;\n  const text = (job.title + ' ' + job.description).toLowerCase();\n\n  if (HARD_REJECT.some(t => text.includes(t))) continue;\n  if (CORE_REJECT.some(t => text.includes(t))) continue;\n\n  const isSenior = job.title.toLowerCase().includes('senior') || job.title.toLowerCase().includes('staff') || job.title.toLowerCase().includes('principal');\n  if (isSenior && SENIOR_FLAGS.some(t => text.includes(t))) continue;\n\n  if (!STACK_TERMS.some(t => text.includes(t))) continue;\n\n  out.push({ json: job });\n}\n\nreturn out;"
+      },
+      "id": "09d9f134-7c8f-4c9f-85dd-56c7cec8b592",
+      "name": "Rule Pre-Filter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1216,
+        1904
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_RESUME_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "YOUR_RESUME_SHEET_NAME",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_RESUME_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_RESUME_SHEET_ID/edit#gid=0"
+        },
+        "options": {}
+      },
+      "id": "5ed24d20-787b-48ee-a1fc-b2c34df552f0",
+      "name": "Get My Resume",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        -1184,
+        2112
+      ],
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      },
+      "notes": "Reads your resume text from Google Sheets."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: \"gpt-4o-mini\", temperature: 0.2, response_format: { type: \"json_object\" }, messages: [ { role: \"system\", content: \"You are a precise job-matching analyst. Return ONLY valid JSON, no markdown fences.\" }, { role: \"user\", content: \"Score how well this job fits the candidate.\\n\\nCANDIDATE RESUME:\\n\" + $json.resume_text + \"\\n\\nJOB:\\nTitle: \" + $json.title + \"\\nCompany: \" + $json.company + \"\\nLocation: \" + $json.location + \"\\nDescription: \" + $json.description + \"\\n\\nScore the job 0-100 using EXACTLY this rubric:\\n- Stack match (n8n, Python, OpenAI/Claude/Gemini, APIs, automation, RAG): 40 points max\\n- Remote-anywhere AND accepts any nationality (no US-only, no relocation): 25 points max\\n- Realistic experience level for YOUR_EXPERIENCE_LEVEL (e.g. ~1 year experience) (not senior/8+ years): 20 points max\\n- No blocker requirements (no TensorFlow/PyTorch core, no hard Masters required, no clearance): 15 points max\\n\\nAlso detect RED FLAGS: staffing-agency post, vague talent pool, unpaid role, MLM-style.\\n\\nReturn this exact JSON shape: {\\\"score\\\": <integer 0-100>, \\\"stack_match\\\": \\\"<1 sentence>\\\", \\\"location_ok\\\": <true or false>, \\\"experience_fit\\\": \\\"<1 sentence>\\\", \\\"blockers\\\": \\\"<none or what>\\\", \\\"has_red_flags\\\": <true or false -- true ONLY for staffing-agency posts, vague talent pools, unpaid roles, or MLM-style listings>, \\\"red_flags\\\": \\\"<empty string if has_red_flags is false, otherwise a 1 sentence description>\\\", \\\"verdict\\\": \\\"<2 sentence summary>\\\"}\" } ] }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "21f65498-8880-4ff7-9065-a7d869d103c0",
+      "name": "OpenAI Deep Scoring",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -800,
+        1904
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI account"
+        }
+      },
+      "notes": "Uses gpt-4o-mini. All fields (job title/company/location/description + resume_text) arrive on the same item via 'Attach Resume', which merges both branches with a real input connection -- no cross-node $('Node') lookups, which are unreliable across sibling branches in n8n."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse OpenAI's JSON response and attach to the job\nconst jobs = $('Rule Pre-Filter').all();\nconst responses = $input.all();\nconst out = [];\n\nfor (let i = 0; i < responses.length; i++) {\n  const resp = responses[i].json;\n  const job = jobs[i] ? jobs[i].json : null;\n  if (!job) continue;\n\n  let scoreData = null;\n  try {\n    const text = resp.choices[0].message.content;\n    scoreData = JSON.parse(text);\n  } catch (e) {\n    continue;\n  }\n\n  out.push({\n    json: {\n      ...job,\n      score: scoreData.score || 0,\n      stack_match: scoreData.stack_match || '',\n      location_ok: scoreData.location_ok === true,\n      experience_fit: scoreData.experience_fit || '',\n      blockers: scoreData.blockers || 'none',\n      has_red_flags: scoreData.has_red_flags === true,\n      red_flags: scoreData.red_flags || '',\n      verdict: scoreData.verdict || ''\n    }\n  });\n}\n\nreturn out;"
+      },
+      "id": "0a52db3b-3330-418a-b9f2-98ddc87c462e",
+      "name": "Parse Scores",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -624,
+        1904
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Keep only high-relevance jobs, sort, take top 5\nconst THRESHOLD = 50;\n\nlet jobs = $input.all()\n  .map(i => i.json)\n  .filter(j =>\n    j.score >= THRESHOLD &&\n    j.location_ok === true &&\n    j.has_red_flags !== true\n  );\n\njobs.sort((a, b) => b.score - a.score);\njobs = jobs.slice(0, 5);\n\nreturn jobs.map(j => ({ json: j }));"
+      },
+      "id": "2ce6ea2b-477b-4403-b8d9-81f3fda658a0",
+      "name": "Threshold + Top 5",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -448,
+        1904
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build the HTML email body from top jobs\nconst jobs = $input.all().map(i => i.json);\n\nif (jobs.length === 0) {\n  return [{ json: { skip: true, html: '', count: 0, topScore: 0 } }];\n}\n\nconst topScore = jobs[0].score;\n\nlet cards = '';\nfor (const j of jobs) {\n  const blockerLine = (j.blockers && j.blockers.toLowerCase() !== 'none')\n    ? `<p style=\"margin:6px 0;color:#b45309;font-size:13px;\"><b>Note:</b> ${j.blockers}</p>` : '';\n  cards += `\n  <div style=\"border:1px solid #e2e8f0;border-radius:12px;padding:18px;margin-bottom:16px;font-family:Arial,sans-serif;\">\n    <div style=\"display:flex;justify-content:space-between;align-items:center;\">\n      <h3 style=\"margin:0;color:#0f172a;font-size:18px;\">${j.title}</h3>\n      <span style=\"background:#0EA5A0;color:#fff;padding:4px 12px;border-radius:20px;font-size:14px;font-weight:bold;\">${j.score}/100</span>\n    </div>\n    <p style=\"margin:6px 0;color:#475569;font-size:14px;\"><b>${j.company}</b> &middot; ${j.location} &middot; <span style=\"color:#94a3b8;\">${j.source}</span></p>\n    <p style=\"margin:10px 0;color:#334155;font-size:14px;line-height:1.5;\">${j.verdict}</p>\n    <p style=\"margin:6px 0;color:#64748b;font-size:13px;\">✅ ${j.stack_match}</p>\n    <p style=\"margin:6px 0;color:#64748b;font-size:13px;\">📊 ${j.experience_fit}</p>\n    ${blockerLine}\n    <a href=\"${j.url}\" style=\"display:inline-block;margin-top:10px;background:#7C3AED;color:#fff;text-decoration:none;padding:10px 22px;border-radius:8px;font-size:14px;font-weight:bold;\">Apply Now →</a>\n  </div>`;\n}\n\nconst html = `\n<div style=\"max-width:640px;margin:0 auto;background:#f8fafc;padding:24px;\">\n  <h2 style=\"color:#0f172a;font-family:Arial,sans-serif;\">🎯 ${jobs.length} New AI Jobs Matched For You</h2>\n  <p style=\"color:#64748b;font-family:Arial,sans-serif;font-size:14px;\">Top match score: ${topScore}/100 &middot; Filtered for remote, any-nationality, stack-matched roles only.</p>\n  ${cards}\n  <p style=\"color:#94a3b8;font-family:Arial,sans-serif;font-size:12px;text-align:center;margin-top:20px;\">Auto-generated by your Smart Job Finder &middot; runs every 6 hours</p>\n</div>`;\n\nreturn [{ json: { skip: false, html, count: jobs.length, topScore } }];"
+      },
+      "id": "2bea8247-d4fb-4e5b-b9b9-a2516b96e376",
+      "name": "Format Email",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -240,
+        1904
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "has-jobs",
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "bd5cbe89-9629-4a9e-a969-b77b73858ee5",
+      "name": "Any Jobs Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -64,
+        1904
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "YOUR_EMAIL@example.com",
+        "subject": "=🎯 {{ $json.count }} new AI jobs matched (top: {{ $json.topScore }}/100)",
+        "message": "={{ $json.html }}",
+        "options": {}
+      },
+      "id": "20e81c3b-941a-46bb-af59-1860601286eb",
+      "name": "Send Gmail",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        208,
+        1760
+      ],
+      "webhookId": "YOUR_GMAIL_WEBHOOK_ID",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      },
+      "notes": "Connect your Gmail OAuth credential in n8n."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build rows of job IDs to save as 'seen'\nconst jobs = $('Threshold + Top 5').all().map(i => i.json);\nconst today = new Date().toISOString().slice(0, 10);\nreturn jobs.map(j => ({ json: { job_id: j.id, date_seen: today } }));"
+      },
+      "id": "88260ef1-364f-4fb1-8de6-03059c26ef03",
+      "name": "Prep Seen IDs",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        1984
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SEEN_JOBS_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Seen Jobs",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_SEEN_JOBS_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sheet1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_SEEN_JOBS_SHEET_ID/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "job_id": "={{ $json.job_id }}"
+          },
+          "matchingColumns": [
+            "job_id"
+          ],
+          "schema": [
+            {
+              "id": "job_id",
+              "displayName": "job_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "6c105c1a-dfe9-476d-bb20-ac18fed5f1a2",
+      "name": "Save Seen IDs",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        400,
+        1984
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_GOOGLE_SHEETS_CREDENTIAL_ID",
+          "name": "Google Sheets account"
+        }
+      },
+      "notes": "Appends each newly-emailed job_id."
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst body = item.json;\n\nconst statusCode = body.statusCode || body.status || null;\nif (statusCode && Number(statusCode) >= 400) {\n  throw new Error(`JSearch API failed: HTTP ${statusCode} - ${JSON.stringify(body).slice(0, 300)}`);\n}\n\nif (!Array.isArray(body.data) && typeof body.message === 'string') {\n  throw new Error(`JSearch API failed: ${body.message}`);\n}\n\nreturn $input.all();"
+      },
+      "id": "1c7ca20c-0a4e-41db-83b1-a605ee871d91",
+      "name": "Check JSearch API Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2176,
+        1776
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first();\nconst body = item.json;\n\nconst statusCode = body.statusCode || body.status || null;\nif (statusCode && Number(statusCode) >= 400) {\n  throw new Error(`SerpAPI failed: HTTP ${statusCode} - ${JSON.stringify(body).slice(0, 300)}`);\n}\n\nif (typeof body.error === 'string') {\n  throw new Error(`SerpAPI failed: ${body.error}`);\n}\n\nreturn $input.all();"
+      },
+      "id": "22b81e98-414d-4601-aa2a-7589ecec3059",
+      "name": "Check SerpAPI Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2176,
+        2016
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "713c8187-532a-4c0a-a830-f71b9293dead",
+      "name": "Attach Resume (Merge)",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -992,
+        1920
+      ],
+      "notes": "Multiplex cross-joins every job item (Input 1, from Rule Pre-Filter) with the single resume row (Input 2, from Get My Resume), so every job item ends up carrying resume_text. Unlike a Code node with two dangling connections, Merge genuinely waits for both inputs before running."
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Every 6 Hours": {
+      "main": [
+        [
+          {
+            "node": "Search Terms",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Terms": {
+      "main": [
+        [
+          {
+            "node": "Split Terms",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Terms": {
+      "main": [
+        [
+          {
+            "node": "JSearch API",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "SerpAPI Google Jobs",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get My Resume",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "JSearch API": {
+      "main": [
+        [
+          {
+            "node": "Check JSearch API Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SerpAPI Google Jobs": {
+      "main": [
+        [
+          {
+            "node": "Check SerpAPI Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge & Normalize": {
+      "main": [
+        [
+          {
+            "node": "Get Seen Job IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Seen Job IDs": {
+      "main": [
+        [
+          {
+            "node": "Remove Seen Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Remove Seen Jobs": {
+      "main": [
+        [
+          {
+            "node": "Rule Pre-Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rule Pre-Filter": {
+      "main": [
+        [
+          {
+            "node": "Attach Resume (Merge)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get My Resume": {
+      "main": [
+        [
+          {
+            "node": "Attach Resume (Merge)",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "OpenAI Deep Scoring": {
+      "main": [
+        [
+          {
+            "node": "Parse Scores",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Scores": {
+      "main": [
+        [
+          {
+            "node": "Threshold + Top 5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Threshold + Top 5": {
+      "main": [
+        [
+          {
+            "node": "Format Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Email": {
+      "main": [
+        [
+          {
+            "node": "Any Jobs Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any Jobs Found?": {
+      "main": [
+        [
+          {
+            "node": "Send Gmail",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prep Seen IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Seen IDs": {
+      "main": [
+        [
+          {
+            "node": "Save Seen IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check JSearch API Status": {
+      "main": [
+        [
+          {
+            "node": "Merge & Normalize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check SerpAPI Status": {
+      "main": [
+        [
+          {
+            "node": "Merge & Normalize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attach Resume (Merge)": {
+      "main": [
+        [
+          {
+            "node": "OpenAI Deep Scoring",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "YOUR_VERSION_ID",
+  "meta": {
+    "instanceId": "YOUR_N8N_INSTANCE_ID"
+  },
+  "nodeGroups": [],
+  "id": "YOUR_WORKFLOW_ID",
+  "tags": []
+}
