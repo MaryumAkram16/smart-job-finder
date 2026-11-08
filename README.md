@@ -6,31 +6,7 @@ An n8n AI agent that finds, scores, and emails me matching remote jobs.
 
 ## Pipeline
 
-```mermaid
-flowchart TD
-    A[Every 6 Hours] --> B[Search Terms]
-    B --> C[Split Terms]
-    C --> D[JSearch API]
-    C --> E[SerpAPI Google Jobs]
-    C --> R[Get My Resume<br/>Google Sheet]
-    D --> D2[Check JSearch API Status]
-    E --> E2[Check SerpAPI Status]
-    D2 --> F[Merge & Normalize]
-    E2 --> F
-    F --> G[Get Seen Job IDs<br/>Google Sheet]
-    G --> H[Remove Seen Jobs]
-    H --> I[Rule Pre-Filter]
-    I --> J[Attach Resume]
-    R --> J
-    J --> K[OpenAI Deep Scoring<br/>gpt-4o-mini]
-    K --> L[Parse Scores]
-    L --> M[Threshold + Top 5]
-    M --> N[Format Email]
-    N --> O{Any Jobs Found?}
-    O --> P[Send Gmail]
-    O --> Q[Prep Seen IDs]
-    Q --> S[Save Seen IDs<br/>Google Sheet]
-```
+![Smart Job Finder pipeline](docs/pipeline.webp)
 
 ## How it works
 
